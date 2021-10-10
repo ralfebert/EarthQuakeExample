@@ -22,21 +22,35 @@ struct Earthquake: Identifiable {
 
     init(line: String) {
         let fields = line.split(separator: ",")
-        date = Self.dateFormatter.date(from: String(fields[0]))!
-        location = CLLocationCoordinate2D(latitude: .init(fields[1])!, longitude: .init(fields[2])!)
-        depth = Self.numberFormatter.number(from: String(fields[2]))!.decimalValue
-        mag = Self.numberFormatter.number(from: String(fields[3]))!.decimalValue
+        self.date = Self.dateFormatter.date(from: String(fields[0]))!
+        self.location = CLLocationCoordinate2D(latitude: .init(fields[1])!, longitude: .init(fields[2])!)
+        self.depth = Self.numberFormatter.number(from: String(fields[2]))!.decimalValue
+        self.mag = Self.numberFormatter.number(from: String(fields[3]))!.decimalValue
     }
 }
 
-@MainActor
 class EarthquakesModel: ObservableObject {
     @Published var earthquakes = [Earthquake]()
 
     func load() async throws {
-        earthquakes = []
+        self.earthquakes = []
         let url = URL(string: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_month.csv")!
+
+        var bufferedResults = [Earthquake]()
+        for try await line in url.lines {
+            if !line.hasPrefix("time,latitude,") {
+                bufferedResults.append(Earthquake(line: line))
+            }
+            if bufferedResults.count > 100 {
+                let results = bufferedResults
+                Task { @MainActor in earthquakes.append(contentsOf: results) }
+                bufferedResults.removeAll()
+            }
+        }
+        let results = bufferedResults
+        Task { @MainActor in earthquakes.append(contentsOf: results) }
     }
+
 }
 
 struct ContentView: View {
